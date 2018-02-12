@@ -9,7 +9,7 @@ DrRacket (https://racket-lang.org/)
 ## Installation
 
 1. Open DrRacket. Click `File` > `Install Package...`.
-2. Type `https://github.com/sorawee/recursive-language` in the textbox. Click `Install`.
+2. Type `https://github.com/sorawee/recursive-language.git` in the textbox. Click `Install`.
 
 ## How to run
 
