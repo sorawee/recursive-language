@@ -22,7 +22,7 @@ Following are builtin:
 3. `const_<n>` where `<n>` is a nat
 4. `Cn` (composition)
 5. `Pr` (primitive recursion)
-6. --`Mn` (Minimization)-- Under Construction!
+6. `Mn` (Minimization): NOT YET IMPLEMENTED -- WILL BE ADDED SOON
 
 Note that the language uses S-Expression, so instead of writing `Pr[f, g]`, write `[Pr f g]` instead. Similarly, instead of writing `Cn[f, a, b, c]`, write `[Cn f a b c]`.
 
