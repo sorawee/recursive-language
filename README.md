@@ -13,9 +13,9 @@ DrRacket (https://racket-lang.org/)
 
 ## How to run
 
-In the editor, you can define recursive functions and call them.
+In the editor, you can define recursive functions and call them. Please note that every definition and call must terminate with the character `;`.
 
-Following are builtin:
+Following are builtin that you can used to define a function:
 
 1. `z` and `s` functions (zero constant and successor functions)
 2. `id_<place>^<arity>` where `<place>` and `<arity>` are nats (identity / projection functions)
@@ -24,20 +24,18 @@ Following are builtin:
 5. `Pr` (primitive recursion)
 6. --`Mn` (Minimization)-- Under Construction!
 
-Note that the language uses S-Expression, so instead of writing `Pr[f, g]`, write `[Pr f g]` instead. Similarly, instead of writing `Cn[f, a, b, c]`, write `[Cn f a b c]`.
-
-You can give a name to a recursive function using the `define` construct. For example:
+You can give a name to a recursive function using `=`. For example:
 
 ```
-[define sum [Pr id_1^1 [Cn s id_3^3]]]
+sum = Pr[id_1^1, Cn[s, id_3^3]];
 ```
 
-defines `sum` to be the recursive function `[Pr id_1^1 [Cn s id_3^3]]`.
+defines `sum` to be the recursive function `Pr[id_1^1, Cn[s, id_3^3]]`.
 
 Then, we can call the function by:
 
 ```
-(sum 10 23)
+sum(10, 23);
 ```
 
 
@@ -47,27 +45,27 @@ Click `Run` at the top right of the editor. This results in:
 (sum 2 23): 25
 ```
 
-in the output panel.
+in the output panel (the expression before `:` is your call in S-Expression).
 
 ## Example
 
 ```
 #lang recursive-language
 
-[define sum [Pr id_1^1 [Cn s id_3^3]]]
+sum = Pr[id_1^1, Cn[s, id_3^3]];
 
-(sum 2 23)
+sum(2, 23);
 
-[define prod [Pr z [Cn sum id_1^3 id_3^3]]]
+prod = Pr[z, Cn[sum, id_1^3, id_3^3]];
 
-(prod 1 1)
-(prod 2 2)
-(prod 3 3)
+prod(1, 1);
+prod(2, 2);
+prod(3, 3);
 
-[define fact
-  [Cn [Pr const_1 [Cn prod [Cn s id_2^3] id_3^3]] id_1^1 id_1^1]]
+fact =
+  Cn[Pr[const_1, Cn[prod, Cn[s, id_2^3], id_3^3]], id_1^1, id_1^1];
 
-(fact 4)
+fact(4);
 ```
 
 results in:

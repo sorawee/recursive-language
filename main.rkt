@@ -3,11 +3,12 @@
 (provide z s
          Cn
          Pr
+         id
+         const
          #%top-interaction
          #%app
          (rename-out [my-datum #%datum]
                      [my-define define]
-                     [my-top #%top]
                      [my-module-begin #%module-begin]
                      [println print]))
 (require (for-syntax syntax/parse))
@@ -18,6 +19,18 @@
 
 (define (z x) 0)
 (define s add1)
+
+(define (id place arity)
+   (lambda args
+     (when (not (= arity (length args)))
+       (error 'id
+               (format "Got ~a arguments. Expected arity: ~a"
+                       (length args)
+                       arity)))
+     (list-ref args (sub1 place))))
+
+(define (const n) (lambda (_) n))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Combinations
@@ -51,13 +64,15 @@
 
 (define-syntax (module-helper stx)
   (syntax-parse stx
-    #:datum-literals (define)
-    [(_ (define x y) rest ...)
+    #:datum-literals (letv)
+    [(_ (letv x y) rest ...)
      #'(let ([x y]) (module-helper rest ...))]
     [(_ x rest ...)
      #`(begin (printf "~a: ~a\n" #,(syntax->datum #''x) x)
               (module-helper rest ...))]
     [(_) #'(void)]))
+
+(require (for-syntax racket))
 
 (define-syntax (my-module-begin stx)
   (syntax-parse stx
@@ -70,25 +85,26 @@
 (define-syntax (my-define stx)
   (raise-syntax-error 'define "used out of context" stx))
 
-(define-syntax-rule (my-top . x) (special-fun (symbol->string 'x)))
-
-(define (special-fun s)
-  (match (regexp-match #px"^id_(\\d+)\\^(\\d+)$" s)
-    [(list _ place arity)
-     (lambda args
-       (when (not (= (string->number arity) (length args)))
-         (error 'id
-                "Got ~a arguments. Expected arity: ~a"
-                (length args)
-                (string->number arity)))
-       (list-ref args (sub1 (string->number place))))]
-    [#f (match (regexp-match #px"^const_(\\d+)$" s)
-          [(list _ n) (lambda (_) (string->number n))]
-          [#f (error (string->symbol s) "unbound identifier")])]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Reader
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(module reader syntax/module-reader
-  recursive-language)
+(module reader racket
+  (require syntax/strip-context)
+  (require "parser.rkt")
+  (provide (rename-out [my-read-syntax read-syntax]
+                       [my-read read])
+           get-info)
+  (define (my-read in) (syntax->datum (my-read-syntax #f in)))
+  (define (my-read-syntax src in)
+    (strip-context
+      #`(module src recursive-language
+        #,@(parse src in "recursive-language"))))
+
+  (define (get-info port src-mod src-line src-col src-pos)
+    (define (handle-query key default)
+      (case key
+        [(color-lexer) (dynamic-require 'recursive-language/colorer 'do-color)]
+        [else default]))
+    handle-query))
