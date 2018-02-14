@@ -22,7 +22,7 @@ Following are builtin that you can used to define a function:
 3. `const_<n>` where `<n>` is a nat
 4. `Cn` (composition)
 5. `Pr` (primitive recursion)
-6. --`Mn` (Minimization)-- Under Construction!
+6. `Mn` (Minimization): NOT YET IMPLEMENTED -- WILL BE ADDED SOON
 
 You can give a name to a recursive function using `=`. For example:
 
