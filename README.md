@@ -24,7 +24,7 @@ DrRacket (which can be downloaded at https://racket-lang.org/)
 To make it clear what constructs you use to define functions, you need to
 explicitly _import_ constructs that you wish to use with the `import` statement:
 
-`import <construct_1>, <construct_1>, ..., <construct_n>;`
+`import <construct_1>, <construct_2>, ..., <construct_n>;`
 
 Following are core constructs that you can used to define a function.
 
