@@ -1,5 +1,7 @@
 #lang recursive-language
 
+import Pr, Cn, s, id, z, const, sum;
+
 sum = Pr[id_1^1, Cn[s, id_3^3]];
 
 sum(2, 23);
