@@ -7,10 +7,6 @@
                      [my-module-begin #%module-begin]))
 (require (for-syntax syntax/parse racket))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Racket forms
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (define-syntax (module-rec stx)
   (syntax-parse stx
     #:datum-literals (=)
@@ -40,7 +36,6 @@
       [((args ...) rest ...)
        (map (curry check-rec bound) (syntax->list #'(args ...)))
        (check-rec bound #'(rest ...))]
-      [() #f]
       [(args ...) (map (curry check-rec bound) (syntax->list stx))]
       [_
        (define e (syntax-e stx))
@@ -48,13 +43,14 @@
          [(identifier? stx)
           (when (not (member e bound))
             (raise-syntax-error #f "unbound identifier" stx))]
-         [(number? e) #f]
-         [else #f])]))
+         [(number? e) #f])]))
   (syntax-parse stx
     [(_ (first-imp rest-imp ...) (prog ...))
      (define ret-stx #'(module-rec () prog ...))
      (define lits (module-collect-id #'(prog ...)))
-     (define dup (check-duplicates lits #:key syntax->datum))
+     (define dup (check-duplicates
+       (append (syntax->list #'(first-imp rest-imp ...)) lits)
+       #:key syntax->datum))
      (when dup (raise-syntax-error #f "duplicate definition" dup))
      (check-rec (syntax->datum #'(rest-imp ...)) #'(prog ...))
      #`(#%module-begin
@@ -67,7 +63,7 @@
     [(_ (import xs ...) prog ...)
      #'(module-helper (xs ...) (prog ...))]
     [(_ prog ...)
-     #'(module-helper () (prog ...))]))
+     #'(module-helper (recursive-language/constructs) (prog ...))]))
 
 (define-syntax (my-datum stx)
   (syntax-parse stx

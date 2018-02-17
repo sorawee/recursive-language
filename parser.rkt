@@ -8,7 +8,7 @@
 
 (define-syntax-rule (do/p x ...) (do x ...))
 
-(define (default-stringify lst) (foldl (lambda (x a) (~a a x)) "" lst))
+(define (default-stringify lst) (foldl (λ (x a) (~a a x)) "" lst))
 
 (define wsp/p (hidden/p (many/p space/p)))
 (define wspr/p (hidden/p (many+/p space/p)))
@@ -178,7 +178,5 @@
    (parse-syntax-string
     (toplevel/p lang-name)
     (datum->syntax
-     #f (string-append "#lang "
-                       lang-name
-                       (port->string in))
+     #f (string-append "#lang " lang-name (port->string in))
      (list src 1 0 1 0)))))
