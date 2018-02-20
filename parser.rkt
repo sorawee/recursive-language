@@ -5,13 +5,21 @@
 (require megaparsack megaparsack/text)
 (require data/monad)
 (require data/applicative)
+(require (for-syntax syntax/parse))
 
 (define-syntax-rule (do/p x ...) (do x ...))
+(define-syntax (wrap/p stx)
+  (syntax-parse stx
+    #:datum-literals (<? ?>)
+    [(_ pre ... <? ret ?> post ...)
+     #'(do/p pre ... [v <- ret] post ... (pure v))]))
 
 (define (default-stringify lst) (foldl (λ (x a) (~a a x)) "" lst))
 
 (define wsp/p (hidden/p (many/p space/p)))
 (define wspr/p (hidden/p (many+/p space/p)))
+
+(define (spacet/p p) (wrap/p <? p ?> wsp/p))
 
 ; Do not allow $ as the first character, as it's the access to unhygienic
 ; variables which could introduce recursion
@@ -20,15 +28,13 @@
 (define keywords '(id const z s Pr Cn Mn = import))
 
 (define (symbol/np s)
-  (syntax/p
-   (do/p [v <- (string/p s)]
-         (pure (string->symbol v)))))
+  (syntax/p (chain (compose1 pure string->symbol) (string/p s))))
 
 (define nat/np
-  (do/p [v <- (many/p digit/p #:min 1)]
-        (pure (string->number (default-stringify v)))))
+  (chain (compose1 pure string->number default-stringify)
+         (many/p digit/p #:min 1)))
 
-(define nat/p (do/p [n <- nat/np] wsp/p (pure n)))
+(define nat/p (spacet/p nat/np))
 
 (define iden/p
   (syntax/p
@@ -56,11 +62,13 @@
   (syntax/p
     (label/p
       "identifier"
-      (do/p [first <- (or/p letter/p (char-in/p allowed-first-chars))]
+      (do/p [first <- (or/p letter/p
+                            (char-in/p allowed-first-chars))]
             [rest <- (many/p (or/p letter/p
                                    digit/p
                                    (char-in/p allowed-chars)))]
-            (pure (string->symbol (default-stringify (cons first rest))))))))
+            (pure (string->symbol
+                   (default-stringify (cons first rest))))))))
 
 (define id/np
   (guard/p
@@ -69,18 +77,13 @@
     #f
     (λ (id) (format "Cannot use a keyword as an identifier: ~a" id))))
 
-(define (spacet/p p) (do/p [v <- p] wsp/p (pure v)))
-
 (define id/p (spacet/p id/np))
 (define id/rp (spacet/p id/rnp))
 
 (define (comma-separated/p p min-val max-val)
   (syntax/p (many/p p #:sep (do (char/p #\,) wsp/p) #:min min-val #:max max-val)))
 
-(define semi/p
-  (hidden/p
-   (do/p (char/p #\;)
-         wsp/p)))
+(define semi/p (hidden/p (do/p (char/p #\;) wsp/p)))
 
 (define import/p
   (syntax/p
@@ -99,9 +102,9 @@
   (syntax/p
    (label/p
     name
-    (do/p [name <- (symbol/np name)]
-          wsp/p
-          (char/p #\[)
+    (do/p [name <- (try/p (wrap/p <? (symbol/np name) ?>
+                                  wsp/p
+                                  (char/p #\[)))]
           wsp/p
           [args <- (comma-separated/p rec/p min-val max-val)]
           (char/p #\])
@@ -119,9 +122,9 @@
   (syntax/p
    (or/p (try/p iden/p)
          (try/p const/p)
-         (try/p (comb/p "Pr" 2 2))
-         (try/p (comb/p "Cn" 2 +inf.0))
-         (try/p (comb/p "Mn" 1 1))
+         (comb/p "Pr" 2 2)
+         (comb/p "Cn" 2 +inf.0)
+         (comb/p "Mn" 1 1)
          (try/p id/p)
          (id-const/p #\z)
          (id-const/p #\s))))
@@ -130,12 +133,9 @@
   (syntax/p
    (label/p
     "Definition"
-    (do/p [x <- id/p]
-          (char/p #\=)
+    (do/p [x <- (try/p (wrap/p <? id/p ?> (char/p #\=)))]
           wsp/p
           [val <- rec/p]
-          (char/p #\;)
-          wsp/p
           (pure (list '= x val))))))
 
 (define app/p
@@ -148,17 +148,11 @@
           [args <- (comma-separated/p expr/p 0 +inf.0)]
           (char/p #\))
           wsp/p
-          (char/p #\;)
-          wsp/p
           (pure (list* f args))))))
 
 (define expr/p (syntax/p (or/p nat/p app/p)))
-
 (define statement/p
-  (syntax/p
-   (or/p (try/p let/p)
-         expr/p)))
-
+  (syntax/p (wrap/p <? (or/p let/p expr/p) ?> (char/p #\;) wsp/p)))
 (define (maybe/p p) (or/p (try/p p) void/p))
 
 (define (toplevel/p lang-name)

@@ -1,8 +1,6 @@
 #lang racket
 
-(provide #%top-interaction
-         #%app
-         #%top
+(provide #%top-interaction #%app #%top
          (rename-out [my-datum #%datum]
                      [my-module-begin #%module-begin]))
 (require (for-syntax syntax/parse racket))
@@ -10,52 +8,35 @@
 (define-syntax (module-rec stx)
   (syntax-parse stx
     #:datum-literals (=)
-    [(_ (id ...) (= x y) rest ...)
+    [(_ (id ...) (= x:id y) rest ...)
      #'(let ([x (λ args (apply y args))])
-         ; eta expansion here so that the name `x` attaches to the function val
+         ; eta expansion here so that `x` attaches to the lambda
          (module-rec (id ... x) rest ...))]
     [(_ (id ...) x rest ...)
      #`(begin (printf "~a: ~a\n" #,(syntax->datum #''x) x)
               (module-rec (id ...) rest ...))]
-    [(_ (id ...))
-     #'(values id ...)]))
+    [(_ (id ...)) #'(values id ...)]))
 
 (define-syntax (module-helper stx)
   (define (module-collect-id stx)
     (syntax-parse stx
       #:datum-literals (=)
-      [((= x _) rest ...) (cons #'x (module-collect-id  #'(rest ...)))]
+      [((= x:id _) rest ...) (cons #'x (module-collect-id  #'(rest ...)))]
       [(_ rest ...) (module-collect-id #'(rest ...))]
       [() '()]))
-  (define (check-rec bound stx)
-    (syntax-parse stx
-      #:datum-literals (=)
-      [((= x val) rest ...)
-       (check-rec bound #'val)
-       (check-rec (cons (syntax->datum #'x) bound) #'(rest ...))]
-      [((args ...) rest ...)
-       (map (curry check-rec bound) (syntax->list #'(args ...)))
-       (check-rec bound #'(rest ...))]
-      [(args ...) (map (curry check-rec bound) (syntax->list stx))]
-      [_
-       (define e (syntax-e stx))
-       (cond
-         [(identifier? stx)
-          (when (not (member e bound))
-            (raise-syntax-error #f "unbound identifier" stx))]
-         [(number? e) #f])]))
   (syntax-parse stx
     [(_ (first-imp rest-imp ...) (prog ...))
-     (define ret-stx #'(module-rec () prog ...))
      (define lits (module-collect-id #'(prog ...)))
      (define dup (check-duplicates
-       (append (syntax->list #'(first-imp rest-imp ...)) lits)
+       (append (syntax->list #'(rest-imp ...)) lits)
        #:key syntax->datum))
      (when dup (raise-syntax-error #f "duplicate definition" dup))
-     (check-rec (syntax->datum #'(rest-imp ...)) #'(prog ...))
-     #`(#%module-begin
-        (require (only-in first-imp rest-imp ...))
-        (define-values #,lits #,ret-stx))]))
+     (with-syntax ([(lits ...) lits])
+       #`(#%module-begin
+          (require (only-in first-imp rest-imp ...))
+          (define-values (lits ...)
+            (let-syntax ([lits (λ (stx) (raise-syntax-error #f "unbound id" stx))] ...)
+              (module-rec () prog ...)))))]))
 
 (define-syntax (my-module-begin stx)
   (syntax-parse stx
