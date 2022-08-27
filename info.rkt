@@ -1,7 +1,8 @@
 #lang info
 (define collection "recursive-language")
 (define version "2.0")
-(define deps '("base"
+(define deps '("rackunit-lib"
+               "base"
                "parser-tools-lib"))
 (define build-deps '("rackunit-lib"
                      "scribble-lib"
