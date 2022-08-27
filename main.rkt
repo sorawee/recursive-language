@@ -1,76 +1,146 @@
-#lang racket
+#lang racket/base
 
-(provide #%top-interaction #%app #%top
-         (rename-out [my-datum #%datum]
-                     [my-module-begin #%module-begin]))
-(require (for-syntax syntax/parse racket))
+(require racket/path
+         racket/stxparam
+         racket/splicing
+         syntax/parse/define
+         rackunit
+         "construct.rkt"
+         (for-syntax racket/base
+                     "error.rkt"))
 
-(define-syntax (module-rec stx)
-  (syntax-parse stx
-    #:datum-literals (=)
-    [(_ (id ...) (= x:id y) rest ...)
-     #'(let ([x (λ args (apply y args))])
-         ; eta expansion here so that `x` attaches to the lambda
-         (module-rec (id ... x) rest ...))]
-    [(_ (id ...) x rest ...)
-     #`(begin (printf "~a: ~a\n" #,(syntax->datum #''x) x)
-              (module-rec (id ...) rest ...))]
-    [(_ (id ...)) #'(values id ...)]))
+(provide #%app
+         #%datum
+         #%top-interaction
+         (rename-out [module-begin #%module-begin])
+         #%top
+         import
+         print
+         check
+         definition
+         macro-call)
 
-(define-syntax (module-helper stx)
-  (define (module-collect-id stx)
-    (syntax-parse stx
-      #:datum-literals (=)
-      [((= x:id _) rest ...) (cons #'x (module-collect-id  #'(rest ...)))]
-      [(_ rest ...) (module-collect-id #'(rest ...))]
-      [() '()]))
-  (syntax-parse stx
-    [(_ (first-imp rest-imp ...) (prog ...))
-     (define lits (module-collect-id #'(prog ...)))
-     (define dup (check-duplicates
-       (append (syntax->list #'(rest-imp ...)) lits)
-       #:key syntax->datum))
-     (when dup (raise-syntax-error #f "duplicate definition" dup))
-     (with-syntax ([(lits ...) lits])
-       #`(#%module-begin
-          (require (only-in first-imp rest-imp ...))
-          (define-values (lits ...)
-            (let-syntax ([lits (λ (stx) (raise-syntax-error #f "unbound id" stx))] ...)
-              (module-rec () prog ...)))))]))
+(begin-for-syntax
+  (define-syntax-class import-statement
+    (pattern ({~literal import} _ _))))
 
-(define-syntax (my-module-begin stx)
-  (syntax-parse stx
-    #:datum-literals (import)
-    [(_ (import xs ...) prog ...)
-     #'(module-helper (xs ...) (prog ...))]
-    [(_ prog ...)
-     #'(module-helper (recursive-language/constructs) (prog ...))]))
+(define-syntax-parameter current-expanding-in-module? #f)
 
-(define-syntax (my-datum stx)
-  (syntax-parse stx
-    [(_ . x)
-     (if (regexp-match #px"\\d+" (~v (syntax->datum #'x)))
-         #'(#%datum . x)
-         (raise-syntax-error #f "value type not supported" #'x))]))
+(define-syntax-parse-rule (module-begin i:import-statement ... body ...)
+  #:do [(define maybe-displaced-import
+          (for/or ([b (in-list (attribute body))])
+            (syntax-parse b
+              [({~literal import} _ _) b]
+              [_ #f])))
+        (when maybe-displaced-import
+          (raise-with-srcloc
+           "import must be at the beginning of the file"
+           maybe-displaced-import))]
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Reader
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  #:with dummy-ctx this-syntax
+  #:with p (datum->syntax this-syntax (list #'provide (list #'all-defined-out)))
 
-(module reader racket
-  (require syntax/strip-context)
-  (require "parser.rkt")
-  (require "colorer.rkt")
-  (provide (rename-out [my-read-syntax read-syntax]
-                       [my-read read])
-           get-info)
-  (define (my-read in) (syntax->datum (my-read-syntax #f in)))
-  (define (my-read-syntax src in)
-    (strip-context (parse src in "recursive-language")))
+  (#%module-begin
+   p
+   i ...
+   (splicing-syntax-parameterize ([current-expanding-in-module? #t])
+     (expand-body (body ...) dummy-ctx))))
 
-  (define (get-info port src-mod src-line src-col src-pos)
-    (define (handle-query key default)
-      (case key
-        [(color-lexer) do-color]
-        [else default]))
-    handle-query))
+;; If
+;;   y = x;
+;;   x = s;
+;;
+;; is naively expanded to
+;;
+;;   (define y x)
+;;   (define x s)
+;;
+;; there would be a binding arrow from x to x, but we don't want that.
+;;
+;; The solution is to add more scope to the set of scopes
+;;
+;;   (define y^{1} x)
+;;   (define x^{1,2} s^{1})
+;;
+;; Now, x can no longer refers to x^{1,2}.
+;;
+;; However, a side effect from this transformation is that we can no longer use
+;; x (or y) at the REPL. So we further add:
+;;
+;;   (define y y^{1})
+;;   (define x x^{1,2})
+;;
+;; This does make x refers to our newly added x, but it no longer creates
+;; a visible binding arrow. Good enough I think!
+;; At run-time, there would be a use-before-definition error for such program.
+(define-syntax-parser expand-body
+  [(_ () ctx) #'(begin)]
+  [(_ ({~and cur ({~and defn {~literal definition}} x v)} tail ...) ctx)
+   (define introducer (make-syntax-introducer #t))
+   (define var (introducer #'x))
+   #`(begin
+       #,(datum->syntax #'cur (list #'defn var #'v) #'cur)
+       (define #,(datum->syntax #'ctx (syntax-e var)) #,var)
+       (expand-body #,(introducer #'(tail ...)) ctx))]
+  [(_ (cur tail ...) ctx)
+   #'(begin
+       cur
+       (expand-body (tail ...) ctx))])
+
+(define-syntax-parse-rule (import [x ...] from)
+  #:with out
+  (datum->syntax
+   this-syntax
+   (list #'require (append (list #'only-in #'from) (attribute x))))
+  out)
+
+(define-syntax-parse-rule (check actual expected)
+  #:do [(define from-module? (syntax-parameter-value #'current-expanding-in-module?))]
+  #:with out (quasisyntax/loc this-syntax
+               (check-equal? actual expected))
+  #:with ret
+  (cond
+    [from-module? #'(module+ test out)]
+    [else #'out])
+
+  ret)
+
+(define-syntax-parse-rule (print x)
+  #:with sloc-line (syntax-line #'x)
+  #:with sloc-col (syntax-column #'x)
+  #:with sloc-source (format "~a" (syntax-source #'x))
+  #:do [(define from-module? (syntax-parameter-value #'current-expanding-in-module?))]
+  #:with out (quasisyntax/loc this-syntax
+               (print/proc 'sloc-source 'sloc-line 'sloc-col x '#,from-module?))
+  #:with ret
+  (cond
+    [from-module? #'(module+ main out)]
+    [else #'out])
+
+  ret)
+
+(define (print/proc source line col val from-module?)
+  (when from-module?
+    (printf "> print <~a:~a:~a>;\n" (file-name-from-path source) line col))
+  ((current-print) val))
+
+(define-syntax-parse-rule (definition x:id v)
+  #:fail-when
+  (and (identifier-binding #'x) #'x)
+  (format "~a is already defined/imported" (syntax-e #'x))
+
+  (define x v))
+
+(define-syntax-parse-rule (macro-call f:id args ...)
+  #:with ret (quasisyntax/loc this-syntax (f args ...))
+  #:with out
+  (cond
+    [(identifier-binding #'f)
+     (cond
+       [(bracket-syntax-transformer? (syntax-local-value #'f (λ () #f))) #'ret]
+       ;; not macro, or non-bracket-syntax macro
+       [else (raise-syntax-error #f "expect Cn, Pr, or Mn" #'f)])]
+    [else
+     ;; let unbound id error do its job
+     #'ret])
+  out)
