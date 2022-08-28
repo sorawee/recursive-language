@@ -20,7 +20,7 @@ See Chapter 6 of @emph{Computability and Logic} (George Boolos, John P. Burgess,
 @subsection{Import}
 
 To make it clear what constructs and functions are used as a basis to define recursive functions,
-you need to explicitly @emph{import} them with the @rcode{import} statement:
+we need to explicitly @emph{import} them with the @rcode{import} statement:
 
 @codeblock[#:keep-lang-line? #f]{
 #lang recursive-language
@@ -50,7 +50,7 @@ Furthermore, following derived functions (presented in the book) are also provid
 
 @subsection{Definition}
 
-You can define recursive functions using @rcode{=} where the LHS is an identifier name and
+We can define recursive functions using @rcode{=} where the LHS is an identifier name and
 the RHS is an expression that builds a recursive function. For example:
 
 @codeblock[#:keep-lang-line? #f]{
@@ -75,8 +75,8 @@ Running the program will result in @rcode{33}.
 
 @subsection{Check}
 
-The check construct can be used to test that recursive functions are correct on given inputs.
-For example:
+We can use the check construct to test that our recursive functions
+are correct on given inputs. For example:
 
 @codeblock[#:keep-lang-line? #f]{
 #lang recursive-language
