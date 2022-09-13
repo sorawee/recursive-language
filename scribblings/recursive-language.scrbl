@@ -111,3 +111,7 @@ print fact(Cn[s, s](4)); # should be 720
 
 check fact(3) = 6;
 }
+
+@section{Acknowledgments}
+
+Thanks to Matthias Felleisen for giving me advice on Racket macrology back in 2018.
